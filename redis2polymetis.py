@@ -18,11 +18,11 @@ def main(
     robot = RobotInterface(ip_address=polymetis_ip)
 
     robot.go_home()
-    robot.start_cartesian_impedance()
 
     while not r.xread({stream_name: last_id}, block=1000, count=1):
         print("Waiting for control signals")
 
+    first_cmd = True
     try:
         while True:
             messages = r.xread({stream_name: last_id}, block=1000, count=1)[0][1]
@@ -40,7 +40,13 @@ def main(
 
                 goal_pos = torch.Tensor([x, y, z_height])
                 goal_quat = torch.Tensor([0, 0, 1, 0])
-                robot.update_desired_ee_pose(goal_pos, goal_quat)
+                if first_cmd:
+                    robot.move_to_ee_pose(
+                        position=goal_pos, orientation=goal_quat, time_to_go=2.0
+                    )
+                    robot.start_cartesian_impedance()
+                else:
+                    robot.update_desired_ee_pose(goal_pos, goal_quat)
 
                 print(f"x: {x:.2f}, y: {y:.2f}, Latency: {latency:.2f} ms")
 
