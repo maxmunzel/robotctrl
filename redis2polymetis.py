@@ -25,11 +25,12 @@ def main(
     first_cmd = True
     try:
         while True:
-            messages = r.xread({stream_name: last_id}, block=1000, count=1)[0][1]
+            messages = r.xread({stream_name: last_id}, block=1000, count=1)
 
             if messages:
-                message_id, payload = messages[-1]
-                last_id = message_id  # Update last_id for the next iteration
+                message_id, payload = messages[0][1][-1]
+                # for fast sources, simply waiting for a new message is better
+                last_id = "$"  # message_id  # Update last_id for the next iteration
 
                 # Calculate latency
                 message_time = float(message_id.split("-")[0])
