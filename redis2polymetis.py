@@ -44,7 +44,7 @@ def main(
                     robot.move_to_ee_pose(
                         position=goal_pos, orientation=goal_quat, time_to_go=2.0
                     )
-                    robot.start_cartesian_impedance()
+                    robot.start_joint_impedance()
                     first_cmd = False
                 else:
                     robot.update_desired_ee_pose(goal_pos, goal_quat)
