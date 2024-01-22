@@ -40,7 +40,7 @@ def main(
                 y = float(payload["y"])
 
                 goal_pos = torch.Tensor([x, y, z_height])
-                goal_quat = torch.Tensor([0.9412, 0.3373, -0.0151, -0.0113])
+                goal_quat = torch.Tensor([0.92387975, 0.3826829, 0., 0.])
                 if first_cmd:
                     robot.move_to_ee_pose(
                         position=goal_pos, orientation=goal_quat, time_to_go=2.0
