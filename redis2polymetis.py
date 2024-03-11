@@ -64,16 +64,18 @@ def main(
                         update_time = time.perf_counter() - start
                         # print(f"x: {x:.2f}, y: {y:.2f}, Latency: {latency:.2f} ms")
                         print(
-                            f"x: {x:.2f}, y: {y:.2f}, Inverse update time: {(1/update_time):.2f}"
+                            f"x: {x:.2f}, y: {y:.2f}, Inverse update time: {(1/update_time):.2f}, Inverse Redis Time: {(1/redis_time):.2f}"
                         )
                 else:
                     assert (
                         payload["cmd"] == "RESET"
                     ), f"Unknown Command: {payload['cmd']}"
                     robot.start_joint_impedance()
-                    if first_cmd:
-                        robot.start_joint_impedance()
-                        first_cmd = False
+                    ee_pos, _ = robot.get_ee_pose()
+                    ee_pos[2] = 0.35
+                    robot.move_to_ee_pose(
+                        position=ee_pos, orientation=goal_quat, time_to_go=2.0
+                    )
                     robot.go_home()
                     print("RESET: Please move box and press enter to confirm.")
                     input()
