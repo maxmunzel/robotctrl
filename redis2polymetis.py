@@ -4,6 +4,7 @@ import torch
 from polymetis import RobotInterface
 import json
 import numpy as np
+from typing import Tuple
 
 
 def main(
@@ -33,21 +34,14 @@ def main(
     first_cmd = True
     try:
         while True:
-            start = time.perf_counter()
             if rate_limit_hz:
                 time.sleep(1 / rate_limit_hz)
             messages = r.xread({cmd_stream: last_id}, block=50, count=1)
-            redis_time = start - time.perf_counter()
             if messages:
                 message_id, payload = messages[0][1][-1]
                 # for fast sources, simply waiting for a new message is better
                 last_id = message_id  # Update last_id for the next iteration
-                # robot.start_joint_impedance()
                 if payload["cmd"] == "GOTO":
-                    # Calculate latency
-                    message_time = float(message_id.split("-")[0])
-                    current_time = float(time.time() * 1000)
-                    latency = current_time - message_time
                     x = float(payload["x"])
                     y = float(payload["y"])
 
@@ -59,45 +53,42 @@ def main(
                         robot.start_joint_impedance()
                         first_cmd = False
                     else:
-                        start = time.perf_counter()
                         robot.update_desired_ee_pose(goal_pos, goal_quat)
-                        update_time = time.perf_counter() - start
-                        # print(f"x: {x:.2f}, y: {y:.2f}, Latency: {latency:.2f} ms")
-                        print(
-                            f"x: {x:.2f}, y: {y:.2f}, Inverse update time: {(1/update_time):.2f}, Inverse Redis Time: {(1/redis_time):.2f}"
-                        )
+                        print(f"x: {x:.2f}, y: {y:.2f}")
                 else:
                     assert (
                         payload["cmd"] == "RESET"
                     ), f"Unknown Command: {payload['cmd']}"
-                    robot.start_joint_impedance()
+
+                    # Move robot just outside the box in a vertical movement
                     ee_pos, _ = robot.get_ee_pose()
                     ee_pos[2] = 0.35
                     robot.move_to_ee_pose(
                         position=ee_pos, orientation=goal_quat, time_to_go=2.0
                     )
+
+                    # Go home and wait for box movement
                     robot.go_home()
                     print("RESET: Please move box and press enter to confirm.")
                     input()
-                    res = r.xrevrange("box_tracking", "+", "-", count=1)
-                    assert res
-                    _, payload = res[0]  # type: ignore
-                    transform = json.loads(payload["transform"])
-                    transform = np.array(transform).reshape(4, 4)
-                    x, y = transform[:2, 3].flatten()
+
+                    # Go above box and wait for confirmation
+                    x, y = get_most_recent_box_xy(r)
                     goal_pos = torch.Tensor([x, y, 0.35])
                     robot.move_to_ee_pose(
                         position=goal_pos, orientation=goal_quat, time_to_go=2.0
                     )
                     print("Press Enter to confirm position")
                     input()
-                    print(f"x: {x:.2f}, y: {y:.2f}, RESET DONE")
+
+                    # Go inside box, start the controller and confirm the reset
                     goal_pos = torch.Tensor([x, y, z_height])
                     robot.move_to_ee_pose(
                         position=goal_pos, orientation=goal_quat, time_to_go=2.0
                     )
                     robot.start_joint_impedance()
                     r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
+                    print(f"x: {x:.2f}, y: {y:.2f}, RESET DONE")
 
             else:
                 if x is None or y is None:
@@ -107,6 +98,16 @@ def main(
                 print("No message received for 50ms. Exiting.")
     finally:
         robot.go_home()
+
+
+def get_most_recent_box_xy(r: redis.Redis) -> Tuple[float, float]:
+    res = r.xrevrange("box_tracking", "+", "-", count=1)
+    assert res
+    _, payload = res[0]  # type: ignore
+    transform = json.loads(payload["transform"])
+    transform = np.array(transform).reshape(4, 4)
+    x, y = transform[:2, 3].flatten()
+    return x, y
 
 
 if __name__ == "__main__":
