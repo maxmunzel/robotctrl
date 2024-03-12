@@ -66,6 +66,7 @@ def main(
                         first_cmd = False
                     else:
                         robot.update_desired_ee_pose(goal_pos, goal_quat)
+                        r.xadd("ack", {"x": x, "y": y})
                         print(f"x: {x:.2f}, y: {y:.2f}")
                 else:
                     assert cmd == "RESET", f"Unknown Command: {payload['cmd']}"
@@ -109,12 +110,6 @@ def main(
                     print(f"x: {x:.2f}, y: {y:.2f}, RESET DONE")
                 last_cmd = cmd
 
-            else:
-                if x is None or y is None:
-                    continue
-                goal_pos = torch.Tensor([x, y, z_height])
-                robot.update_desired_ee_pose(goal_pos, goal_quat)
-                print("No message received for 50ms. Exiting.")
     finally:
         robot.go_home()
 
