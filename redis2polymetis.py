@@ -87,6 +87,7 @@ def main(
                         position=goal_pos, orientation=goal_quat, time_to_go=2.0
                     )
                     robot.start_joint_impedance()
+                    robot.update_desired_ee_pose(goal_pos, goal_quat)
                     r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
                     # Actually confirm it twice because VectorEnvs are weird
                     r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
