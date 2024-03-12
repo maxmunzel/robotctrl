@@ -72,7 +72,8 @@ def main(
 
                     if last_cmd == "RESET":
                         print("Skipping Double Reset CMD")
-                        time.sleep(3)
+                        # Sleep for 3 seconds or the next command 
+                        r.xread({cmd_stream: last_id}, block=3000, count=1)
                         r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
                         continue
 
