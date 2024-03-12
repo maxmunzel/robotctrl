@@ -72,11 +72,12 @@ def main(
 
                     if last_cmd == "RESET":
                         print("Skipping Double Reset CMD")
-                        # Sleep for 3 seconds or the next command 
+                        # Sleep for 3 seconds or the next command
                         r.xread({cmd_stream: last_id}, block=3000, count=1)
                         r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
                         continue
 
+                    print("RESET: Please move box and press enter to confirm.")
                     # Move robot just outside the box in a vertical movement
                     ee_pos, _ = robot.get_ee_pose()
                     ee_pos[2] = 0.35
@@ -86,7 +87,6 @@ def main(
 
                     # Go home and wait for box movement
                     robot.go_home()
-                    print("RESET: Please move box and press enter to confirm.")
                     input()
 
                     # Go above box and wait for confirmation
