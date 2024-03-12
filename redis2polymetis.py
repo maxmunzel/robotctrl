@@ -44,8 +44,18 @@ def main(
                 last_id = message_id  # Update last_id for the next iteration
                 cmd = payload["cmd"]
                 if cmd == "GOTO":
-                    x = float(payload["x"])
-                    y = float(payload["y"])
+                    if x is None:
+                        x = float(payload["x"])
+                        y = float(payload["y"])
+                    else:
+                        x_ = float(payload["x"])
+                        y_ = float(payload["y"])
+                        dist = ((x - x_) ** 2 + (y - y_) ** 2) ** 0.5
+                        limit = 0.05
+                        if dist > limit:
+                            print("Ignoring GOTO, as it exceeds max speed")
+                            continue
+                        x, y = x_, y_
 
                     goal_pos = torch.Tensor([x, y, z_height])
                     if first_cmd:
