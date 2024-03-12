@@ -70,6 +70,7 @@ def main(
                         print(f"x: {x:.2f}, y: {y:.2f}")
                 else:
                     assert cmd == "RESET", f"Unknown Command: {payload['cmd']}"
+                    first_cmd = False
 
                     if last_cmd == "RESET":
                         print("Skipping Double Reset CMD")
