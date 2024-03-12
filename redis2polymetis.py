@@ -90,11 +90,8 @@ def main(
                     robot.update_desired_ee_pose(goal_pos, goal_quat)
                     r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
                     # Actually confirm it twice because VectorEnvs are weird
+                    time.sleep(1)
                     r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
-                    # Also pop ignore the first message
-                    messages = r.xread({cmd_stream: last_id}, block=50, count=1)
-                    if messages:
-                        message_id, _ = messages[0][1][-1]
                     print(f"x: {x:.2f}, y: {y:.2f}, RESET DONE")
 
             else:
