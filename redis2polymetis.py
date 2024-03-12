@@ -88,6 +88,8 @@ def main(
                     )
                     robot.start_joint_impedance()
                     r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
+                    # Actually confirm it twice because VectorEnvs are weird
+                    r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
                     print(f"x: {x:.2f}, y: {y:.2f}, RESET DONE")
 
             else:
