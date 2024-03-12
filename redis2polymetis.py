@@ -51,7 +51,7 @@ def main(
                         x_ = float(payload["x"])
                         y_ = float(payload["y"])
                         dist = ((x - x_) ** 2 + (y - y_) ** 2) ** 0.5
-                        limit = 0.10
+                        limit = 0.05
                         if dist > limit:
                             print("Ignoring GOTO, as it exceeds max speed")
                             continue
@@ -67,8 +67,8 @@ def main(
                     else:
                         robot.update_desired_ee_pose(goal_pos, goal_quat)
                         ee_pos, _ = robot.get_ee_pose()
-                        x, y, z = list(map(lambda x: f"{float(x):2.3f}", ee_pos))
-                        r.xadd("ack", {"x": x, "y": y, "z": z})
+                        x_, y_, z_ = list(map(float, ee_pos))
+                        r.xadd("ack", {"x": f"{x_:2.3f}", "y": f"{y_:2.3f}", "z": f"{z_:2.3f}"})
                         print(f"x: {x:.2f}, y: {y:.2f}")
                 else:
                     assert cmd == "RESET", f"Unknown Command: {payload['cmd']}"
