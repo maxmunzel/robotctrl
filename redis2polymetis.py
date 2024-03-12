@@ -19,6 +19,7 @@ def main(
     obs_stream = "real_robot_obs"
 
     last_id = "$"
+    last_cmd = "GOTO"
 
     robot = RobotInterface(ip_address=polymetis_ip)
 
@@ -41,7 +42,8 @@ def main(
                 message_id, payload = messages[0][1][-1]
                 # for fast sources, simply waiting for a new message is better
                 last_id = message_id  # Update last_id for the next iteration
-                if payload["cmd"] == "GOTO":
+                cmd = payload["cmd"]
+                if cmd == "GOTO":
                     x = float(payload["x"])
                     y = float(payload["y"])
 
@@ -56,9 +58,12 @@ def main(
                         robot.update_desired_ee_pose(goal_pos, goal_quat)
                         print(f"x: {x:.2f}, y: {y:.2f}")
                 else:
-                    assert (
-                        payload["cmd"] == "RESET"
-                    ), f"Unknown Command: {payload['cmd']}"
+                    assert cmd == "RESET", f"Unknown Command: {payload['cmd']}"
+
+                    if last_cmd == "RESET":
+                        print("Skipping Double Reset CMD")
+                        r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
+                        continue
 
                     # Move robot just outside the box in a vertical movement
                     ee_pos, _ = robot.get_ee_pose()
@@ -89,10 +94,8 @@ def main(
                     robot.start_joint_impedance()
                     robot.update_desired_ee_pose(goal_pos, goal_quat)
                     r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
-                    # Actually confirm it twice because VectorEnvs are weird
-                    time.sleep(1)
-                    r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
                     print(f"x: {x:.2f}, y: {y:.2f}, RESET DONE")
+                last_cmd = cmd
 
             else:
                 if x is None or y is None:
