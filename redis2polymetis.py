@@ -72,6 +72,7 @@ def main(
 
                     if last_cmd == "RESET":
                         print("Skipping Double Reset CMD")
+                        time.sleep(3)
                         r.xadd(obs_stream, {"reset": 1, "x": x, "y": y})
                         continue
 
