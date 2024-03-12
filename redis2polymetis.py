@@ -66,7 +66,8 @@ def main(
                         first_cmd = False
                     else:
                         robot.update_desired_ee_pose(goal_pos, goal_quat)
-                        r.xadd("ack", {"x": x, "y": y})
+                        ee_pos, _ = robot.get_ee_pose()
+                        r.xadd("ack", {"x": ee_pos[0], "y": ee_pos[1], "z": ee_pos[2]})
                         print(f"x: {x:.2f}, y: {y:.2f}")
                 else:
                     assert cmd == "RESET", f"Unknown Command: {payload['cmd']}"
