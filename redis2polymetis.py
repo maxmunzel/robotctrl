@@ -68,7 +68,10 @@ def main(
                         robot.update_desired_ee_pose(goal_pos, goal_quat)
                         ee_pos, _ = robot.get_ee_pose()
                         x_, y_, z_ = list(map(float, ee_pos))
-                        r.xadd("ack", {"x": f"{x_:2.3f}", "y": f"{y_:2.3f}", "z": f"{z_:2.3f}"})
+                        r.xadd(
+                            "ack",
+                            {"x": f"{x_:2.3f}", "y": f"{y_:2.3f}", "z": f"{z_:2.3f}"},
+                        )
                         print(f"x: {x:.2f}, y: {y:.2f}")
                 else:
                     assert cmd == "RESET", f"Unknown Command: {payload['cmd']}"
