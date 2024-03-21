@@ -52,7 +52,7 @@ class RealRobotObs(BaseModel):
 
 
 # Connect to Redis
-r = redis.Redis(host="localhost", port=6379, db=0)
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=False)
 
 
 def read_episode_feedback() -> EpisodeFeedback:
@@ -72,9 +72,9 @@ def check_mocap() -> Mocap:
     res = r.xrevrange("box_tracking", "+", "-", count=1)
     assert res
     msg_id, payload = res[0]  # type: ignore
-    transform = json.loads(payload["transform"])
+    transform = json.loads(payload[b"transform"])
     transform = np.array(transform).reshape(4, 4)
-    time_redis = float(msg_id.split("-")[0]) / 1000
+    time_redis = float(msg_id.decode().split("-")[0]) / 1000
     box_pos, box_quat = affine_matrix_to_xpos_and_xquat(transform)
 
     return Mocap.validate(
@@ -93,17 +93,17 @@ def get_obs_or_feedback() -> Union[EpisodeFeedback, RealRobotObs]:
     stream_id, messages = message
     msg_id, msg_data = messages[0]
 
-    if stream_id == "episode_feedback":
+    if stream_id == b"episode_feedback":
         event = EpisodeFeedback.validate(
             {k.decode(): float(v.decode()) for k, v in msg_data.items()}
         )
         return event
 
     else:
-        assert stream_id == "real_robot_obs"
-        x = float(msg_data["x"])
-        y = float(msg_data["y"])
-        reset = int(msg_data["reset"])
+        assert stream_id == b"real_robot_obs"
+        x = float(msg_data[b"x"].decode())
+        y = float(msg_data[b"y"].decode())
+        reset = int(msg_data[b"reset"])
         event = RealRobotObs.validate({"x": x, "y": y, "reset": reset})
         return event
 
@@ -111,10 +111,11 @@ def get_obs_or_feedback() -> Union[EpisodeFeedback, RealRobotObs]:
 def collect_run(exp: str, rep: int, reps_per_exp: int) -> Run:
     print(f"Please Prepare Experiment {exp}. [Iteration {rep+1}/{reps_per_exp}]")
     print("Waiting for reset")
+
+    start_time = None
+    start_pos = None
     while True:
         event = get_obs_or_feedback()
-        start_time = None
-        start_pos = None
         if isinstance(event, RealRobotObs):
             print("Recieved Reset.")
             start_time = time.time()
@@ -156,6 +157,8 @@ def main(n_reps: int, agent: str, config: str):
                 run = collect_run(exp, i, n_reps)
                 runs.append(run)
                 print(run.model_dump_json(indent=2))
+                print()
+                print()
     finally:
         result = Result.validate({"runs": runs, "agent": agent})
         with open(output, "w") as f:
