@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Optional
 import json
 import time
 import numpy as np
@@ -15,18 +15,18 @@ class Config(BaseModel):
 
 
 class EpisodeFeedback(BaseModel):
-    box_goal_pos_dist: float
-    box_goal_rot_dist: float
+    box_goal_pos_dist: Optional[float]
+    box_goal_rot_dist: Optional[float]
     episode_energy: float
     is_success: int
     num_steps: int
-    reward: float
+    reward: Optional[float]
 
 
 class Mocap(BaseModel):
     time_redis: float
     pos: List[float]
-    quat: List[float]
+    quat: List[Union[float, None]]
 
 
 class Run(BaseModel):
