@@ -15,9 +15,11 @@ def __():
     from scipy.spatial.transform import Rotation
     import numpy as np
     from typing import Tuple, List
+    from redis import Redis
     return (
         List,
         Mocap,
+        Redis,
         Result,
         Rotation,
         Run,
@@ -151,7 +153,24 @@ def __(Mocap, Rotation, Tuple, np, plt):
             draw_line(p1, p2, color=color_body)
         # draw face
         draw_line(points[0], points[-1], color=color_face)
-    return draw_pos, mocap_to_44marix
+
+
+    from heapq import heapify, heappop
+    from typing import NamedTuple
+
+
+    class Event(NamedTuple):
+        timestamp_str: str
+        kind: str
+        pos: np.ndarray
+
+        @property
+        def timestamp_ms(self) -> float:
+            return float(self.timestamp_str.split("-")[0])
+
+        def dist(self, other: "Event") -> float:
+            return np.linalg.norm(self.pos - other.pos)
+    return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
 
 
 @app.cell
@@ -166,8 +185,13 @@ def __(affine_matrix_to_xpos_and_xquat, load_exp, mocap_to_44marix):
 
 @app.cell
 def __(
+    Event,
+    List,
     Mocap,
+    Redis,
     draw_pos,
+    heapify,
+    heappop,
     load_exp,
     np,
     plt,
@@ -234,7 +258,9 @@ def __(
         pos_err_ax = ax[0][1]
         pos_err_ax: plt.Axes
         pos_tolerance = 0.05
-        pos_err_data = np.array([pos_err(run.end_pos.pos) for r in res.runs])
+        pos_err_data = np.array(
+            [pos_err(run.end_pos_delayed.pos) for r in res.runs]
+        )
         pos_err_ax.set_title(
             f"Pos Error Dist\n"
             f"µ={np.mean(pos_err_data):.2f} "
@@ -355,6 +381,87 @@ def __(
         score_ax.hist(scores)
         score_ax.set_xlim(-200, 0)
 
+        # Latency
+        latency_ax = ax[1][1]
+        r = Redis(decode_responses=True)
+        dt = []
+        for run in res.runs:
+            r = Redis(decode_responses=True)
+            times = []
+            for timestamp, msg in r.xrange(
+                "cart_cmd",
+                min=f"{int(run.start_pos.time_redis*1000)}-0",
+                max=f"{int(run.end_pos.time_redis*1000)}-0",
+                count=1000,
+            ):
+                times.append(float(timestamp.split("-")[0]))
+
+            dt += np.diff(times).tolist()
+            warn_limit = 500
+            if max(np.diff(times)) > warn_limit:
+                print(
+                    f"{res.agent} exp {run.experiment} it {run.rep} had ctrl latency over {warn_limit}ms"
+                )
+        dt = np.array(dt)
+        latency_ax.plot(dt[dt < 1000000], alpha=0.3)
+        latency_ax.axhline(50, color="green")
+        ctrl_limit = 100
+        latency_ax.set_title(
+            f"Ctrl dt med={np.median(dt):.1f}\n"
+            f"{np.sum(dt>ctrl_limit)} times >{ctrl_limit}ms"
+        )
+        latency_ax.set_ylim(0, 750)
+
+        # Ctrl Error
+
+        for run in res.runs:
+            # build event heap
+            events = []
+            events: List[Event]
+            for timestamp, msg in r.xrange(
+                "cart_cmd",
+                min=f"{int(run.start_pos.time_redis*1000)}-0",
+                max=f"{int(run.end_pos.time_redis*1000)}-0",
+                count=1000,
+            ):
+                x = float(msg["x"])
+                y = float(msg["y"])
+                events.append(Event(timestamp, "cmd", np.array([x, y])))
+
+            for timestamp, msg in r.xrange(
+                "ack",
+                min=f"{int(run.start_pos.time_redis*1000)}-0",
+                max=f"{int(run.end_pos.time_redis*1000)}-0",
+                count=1000,
+            ):
+                x = float(msg["x"])
+                y = float(msg["y"])
+                events.append(Event(timestamp, "ack", np.array([x, y])))
+
+            heapify(events)
+            last_cmd: Event = None
+            last_ack: Event = None
+
+            while events[0].kind != "cmd":
+                heappop(events)
+
+            ctrl_errors = []
+            ctrl_latencies = []
+            while events:
+                e = heappop(events)
+                if e.kind == "cmd":
+                    last_cmd = e
+                else:
+                    last_ack = e
+                    ctrl_errors.append(e.dist(last_cmd))
+                    ctrl_latencies.append(e.timestamp_ms - last_cmd.timestamp_ms)
+
+            latency_ax = ax[1, 2]
+            latency_ax.plot(ctrl_errors, alpha=0.3)
+            # latency_ax.axhline(50)
+            latency_ax.set_title("Positional Ctrl Error")
+            latency_ax.set_ylim(0, 0.2)
+
         return fig
     return plotcard,
 
@@ -371,6 +478,99 @@ def __(plotcard):
     ]:
         plotcard(filename).savefig(f"{filename}_card.pdf")
     return filename, glob
+
+
+@app.cell
+def __(Event, List, Redis, heapify, heappop, load_exp, np, plt):
+    lfig, latency_ax = plt.subplots()
+
+
+    if True:
+        for run in load_exp("results-sweep[44]--base=4-seed=1800.json").runs:
+            r = Redis(decode_responses=True)
+
+            # build event heap
+            events = []
+            events: List[Event]
+            for timestamp, msg in r.xrange(
+                "cart_cmd",
+                min=f"{int(run.start_pos.time_redis*1000)}-0",
+                max=f"{int(run.end_pos.time_redis*1000)}-0",
+                count=1000,
+            ):
+                x = float(msg["x"])
+                y = float(msg["y"])
+                events.append(Event(timestamp, "cmd", np.array([x, y])))
+
+            for timestamp, msg in r.xrange(
+                "ack",
+                min=f"{int(run.start_pos.time_redis*1000)}-0",
+                max=f"{int(run.end_pos.time_redis*1000)}-0",
+                count=1000,
+            ):
+                x = float(msg["x"])
+                y = float(msg["y"])
+                events.append(Event(timestamp, "ack", np.array([x, y])))
+
+            heapify(events)
+            last_cmd: Event = None
+            last_ack: Event = None
+
+            while events[0].kind != "cmd":
+                heappop(events)
+
+            ctrl_errors = []
+            ctrl_latencies = []
+            while events:
+                e = heappop(events)
+                if e.kind == "cmd":
+                    last_cmd = e
+                else:
+                    last_ack = e
+                    ctrl_errors.append(e.dist(last_cmd))
+                    ctrl_latencies.append(e.timestamp_ms - last_cmd.timestamp_ms)
+
+            latency_ax.plot(ctrl_errors, alpha=0.3)
+            # latency_ax.axhline(50)
+            latency_ax.set_title(r"\hat x")
+
+    lfig
+    return (
+        ctrl_errors,
+        ctrl_latencies,
+        e,
+        events,
+        last_ack,
+        last_cmd,
+        latency_ax,
+        lfig,
+        msg,
+        r,
+        run,
+        timestamp,
+        x,
+        y,
+    )
+
+
+@app.cell
+def __(msg):
+    msg
+    return
+
+
+@app.cell
+def __():
+    from fancy_gym import make
+
+    env = make("Sweep21", 44)
+    return env, make
+
+
+@app.cell
+def __(env):
+    1 / env.dt
+    return
 
 
 @app.cell
