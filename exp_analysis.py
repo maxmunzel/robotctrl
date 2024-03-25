@@ -16,6 +16,8 @@ def __():
     import numpy as np
     from typing import Tuple, List
     from redis import Redis
+    import matplotlib.gridspec as gridspec
+
     return (
         List,
         Mocap,
@@ -25,6 +27,7 @@ def __():
         Run,
         Tuple,
         affine_matrix_to_xpos_and_xquat,
+        gridspec,
         np,
         plt,
         rotation_distance,
@@ -35,13 +38,11 @@ def __():
 def __(List, Rotation, np, rotation_distance):
     import json
 
-
     def proj_as_2d_rot(quat) -> List[float]:
         return quat
         r = Rotation.from_quat(quat)
         z_rot = r.as_euler("zyx")[1]
         return Rotation.from_euler("y", z_rot).as_quat()
-
 
     def project_quaternion_to_z_rotation(quaternion):  # chatgpt
         """
@@ -63,12 +64,12 @@ def __(List, Rotation, np, rotation_distance):
         # Convert the modified Euler angles back to a quaternion
         return Rotation.from_euler("ZYX", euler_angles).as_quat()
 
-
     def yank_deg(quat) -> float:
         # how many degrees are between the given quat and its flat projection?
         quat = np.array(quat)
         proj = project_quaternion_to_z_rotation(quat)
         return rotation_distance(proj, quat) / np.pi * 180
+
     return json, proj_as_2d_rot, project_quaternion_to_z_rotation, yank_deg
 
 
@@ -77,7 +78,8 @@ def __(Result):
     def load_exp(path: str) -> Result:
         with open(path) as f:
             return Result.model_validate_json(f.read())
-    return load_exp,
+
+    return (load_exp,)
 
 
 @app.cell
@@ -116,7 +118,6 @@ def __(Mocap, Rotation, Tuple, np, plt):
         M[:3, 3] = np.array(m.pos).flatten()
         return M.copy()
 
-
     def draw_pos(
         m: Mocap,
         ax: plt.Axes,
@@ -133,9 +134,7 @@ def __(Mocap, Rotation, Tuple, np, plt):
             # standing in front of the table
             return vec[1], vec[0]
 
-        def draw_line(
-            p1: Tuple[float, float], p2: Tuple[float, float], color: str
-        ):
+        def draw_line(p1: Tuple[float, float], p2: Tuple[float, float], color: str):
             x1, y1 = proj2d(*p1)
             x2, y2 = proj2d(*p2)
             ax.plot([x1, x2], [y1, y2], color=color, alpha=alpha)
@@ -154,10 +153,8 @@ def __(Mocap, Rotation, Tuple, np, plt):
         # draw face
         draw_line(points[0], points[-1], color=color_face)
 
-
     from heapq import heapify, heappop
     from typing import NamedTuple
-
 
     class Event(NamedTuple):
         timestamp_str: str
@@ -170,6 +167,7 @@ def __(Mocap, Rotation, Tuple, np, plt):
 
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
+
     return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
 
 
@@ -215,7 +213,22 @@ def __(
         def pos_err(pos) -> float:
             return np.linalg.norm(pos - target_pos)
 
-        fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(6, 10))
+        # fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(6, 10))
+        fig, ax = plt.subplot_mosaic(
+            [
+                ["final_pos", "pos_err", "rot_err"],
+                ["score", "ctrl_dt", "ctrl_err"],
+                ["start", "start", "start"],
+                ["start_yank", "end_yank", "ack_latency"],
+            ],
+            figsize=(7.5, 12),
+            tight_layout=True,
+        )
+
+        fig.subplots_adjust(
+            left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.4, wspace=0.4
+        )
+
         fig.suptitle(f"{res.agent}\n\n", fontsize=16)
 
         # Final Position
@@ -223,17 +236,17 @@ def __(
         x = target_pos[0]
         y = target_pos[1]
         d = 0.4
-
-        ax[0][0].set_ylabel("x")
-        ax[0][0].set_xlabel("y")
-        ax[0][0].set_ylim(x + d, x - d)
-        ax[0][0].set_xlim(y - d, y + d)
-        ax[0][0].set_aspect("equal")
-        ax[0][0].set_title("Final Position")
+        final_pos_ax = ax["final_pos"]
+        final_pos_ax.set_ylabel("x")
+        final_pos_ax.set_xlabel("y")
+        final_pos_ax.set_ylim(x + d, x - d)
+        final_pos_ax.set_xlim(y - d, y + d)
+        final_pos_ax.set_aspect("equal")
+        final_pos_ax.set_title("Final Position")
         for run in res.runs:
             draw_pos(
                 run.end_pos,
-                ax[0][0],
+                final_pos_ax,
                 alpha=0.1,
                 color_body="orange",
                 color_face="blue",
@@ -247,7 +260,7 @@ def __(
                     "quat": target_quat.tolist(),
                 }
             ),
-            ax[0][0],
+            final_pos_ax,
             alpha=1,
             color_body="green",
             color_face="red",
@@ -255,12 +268,10 @@ def __(
 
         # Pos Error Plot
 
-        pos_err_ax = ax[0][1]
+        pos_err_ax = ax["pos_err"]
         pos_err_ax: plt.Axes
         pos_tolerance = 0.05
-        pos_err_data = np.array(
-            [pos_err(run.end_pos_delayed.pos) for r in res.runs]
-        )
+        pos_err_data = np.array([pos_err(run.end_pos_delayed.pos) for r in res.runs])
         pos_err_ax.set_title(
             f"Pos Error Dist\n"
             f"µ={np.mean(pos_err_data):.2f} "
@@ -270,15 +281,14 @@ def __(
         pos_err_ax.hist(pos_err_data, alpha=1, bins=np.arange(0, 1, 0.01))
         pos_err_ax.set_xlim(0, 0.3)
         pos_err_ax.axvline(pos_tolerance, color="green", linestyle="--")
+
         # Rot Error Plot
 
-        rot_err = ax[0, 2]
+        rot_err = ax["rot_err"]
         rot_tolerance = 0.5 / np.pi * 180  # what the env considers a success
         rot_err_data = np.array(
             [
-                rotation_distance(np.array(r.end_pos.quat), target_quat)
-                / np.pi
-                * 180
+                rotation_distance(np.array(r.end_pos.quat), target_quat) / np.pi * 180
                 for r in res.runs
                 if None not in r.end_pos.quat
             ]
@@ -291,8 +301,11 @@ def __(
         _ = rot_err.axvline(x=rot_tolerance, color="green", linestyle="--")
 
         # Start Positions
-
-        for rep, pos_ax in enumerate([ax[2][0], ax[2][1], ax[2][2], ax[3][0]]):
+        start_ax = ax["start"]
+        start_ax: plt.Axes
+        start_ax.remove()
+        for rep in range(4):
+            pos_ax = fig.add_subplot(4, 4, 9 + rep)
             x = 0.4
             y = 0.0
             d = 0.4
@@ -321,7 +334,7 @@ def __(
                     )
 
         # Start Yank
-        start_yank_ax = ax[3][1]
+        start_yank_ax = ax["start_yank"]
 
         start_yanks = []
         for run in res.runs:
@@ -340,7 +353,7 @@ def __(
         )
 
         # End Yank
-        end_yank_ax = ax[3][2]
+        end_yank_ax = ax["end_yank"]
 
         end_yanks = []
         for run in res.runs:
@@ -358,10 +371,10 @@ def __(
             f"max={np.max(end_yanks):.2f}"
         )
 
-        fig.tight_layout()
+        # fig.tight_layout()
 
         # Score
-        score_ax = ax[1, 0]
+        score_ax = ax["score"]
         scores = []
         for run in res.runs:
             if None in run.end_pos.quat:
@@ -382,7 +395,7 @@ def __(
         score_ax.set_xlim(-200, 0)
 
         # Latency
-        latency_ax = ax[1][1]
+        latency_ax = ax["ctrl_dt"]
         r = Redis(decode_responses=True)
         dt = []
         for run in res.runs:
@@ -413,6 +426,9 @@ def __(
         latency_ax.set_ylim(0, 750)
 
         # Ctrl Error
+        ack_latencies = []
+        ctrl_err_ax = ax["ctrl_err"]
+        ack_latency_ax = ax["ack_latency"]
 
         for run in res.runs:
             # build event heap
@@ -446,7 +462,6 @@ def __(
                 heappop(events)
 
             ctrl_errors = []
-            ctrl_latencies = []
             while events:
                 e = heappop(events)
                 if e.kind == "cmd":
@@ -454,16 +469,19 @@ def __(
                 else:
                     last_ack = e
                     ctrl_errors.append(e.dist(last_cmd))
-                    ctrl_latencies.append(e.timestamp_ms - last_cmd.timestamp_ms)
+                    ack_latencies.append(e.timestamp_ms - last_cmd.timestamp_ms)
 
-            latency_ax = ax[1, 2]
-            latency_ax.plot(ctrl_errors, alpha=0.3)
-            # latency_ax.axhline(50)
-            latency_ax.set_title("Positional Ctrl Error")
-            latency_ax.set_ylim(0, 0.2)
+            ctrl_err_ax.plot(ctrl_errors, alpha=0.3)
+            # ctrl_err_ax.axhline(50)
+            ctrl_err_ax.set_title("Positional Ctrl Error")
+            ctrl_err_ax.set_ylim(0, 0.2)
+        ack_latency_ax.set_title("Ack Latency /ms")
+        ack_latency_ax.plot(ack_latencies, alpha=0.3)
+        ack_latency_ax.set_ylim(0, 250)
 
         return fig
-    return plotcard,
+
+    return (plotcard,)
 
 
 @app.cell
@@ -483,7 +501,6 @@ def __(plotcard):
 @app.cell
 def __(Event, List, Redis, heapify, heappop, load_exp, np, plt):
     lfig, latency_ax = plt.subplots()
-
 
     if True:
         for run in load_exp("results-sweep[44]--base=4-seed=1800.json").runs:
@@ -570,6 +587,21 @@ def __():
 @app.cell
 def __(env):
     1 / env.dt
+    return
+
+
+@app.cell
+def __(plt):
+    figo, axo = plt.subplots(4, 1)
+    axo[1].remove()
+    axis = figo.add_subplot(4, 4, 6)
+    figo.tight_layout()
+    figo
+    return axis, axo, figo
+
+
+@app.cell
+def __():
     return
 
 
