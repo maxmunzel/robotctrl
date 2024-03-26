@@ -17,7 +17,6 @@ def __():
     from typing import Tuple, List
     from redis import Redis
     import matplotlib.gridspec as gridspec
-
     return (
         List,
         Mocap,
@@ -38,11 +37,13 @@ def __():
 def __(List, Rotation, np, rotation_distance):
     import json
 
+
     def proj_as_2d_rot(quat) -> List[float]:
         return quat
         r = Rotation.from_quat(quat)
         z_rot = r.as_euler("zyx")[1]
         return Rotation.from_euler("y", z_rot).as_quat()
+
 
     def project_quaternion_to_z_rotation(quaternion):  # chatgpt
         """
@@ -64,12 +65,12 @@ def __(List, Rotation, np, rotation_distance):
         # Convert the modified Euler angles back to a quaternion
         return Rotation.from_euler("ZYX", euler_angles).as_quat()
 
+
     def yank_deg(quat) -> float:
         # how many degrees are between the given quat and its flat projection?
         quat = np.array(quat)
         proj = project_quaternion_to_z_rotation(quat)
         return rotation_distance(proj, quat) / np.pi * 180
-
     return json, proj_as_2d_rot, project_quaternion_to_z_rotation, yank_deg
 
 
@@ -78,8 +79,7 @@ def __(Result):
     def load_exp(path: str) -> Result:
         with open(path) as f:
             return Result.model_validate_json(f.read())
-
-    return (load_exp,)
+    return load_exp,
 
 
 @app.cell
@@ -118,6 +118,7 @@ def __(Mocap, Rotation, Tuple, np, plt):
         M[:3, 3] = np.array(m.pos).flatten()
         return M.copy()
 
+
     def draw_pos(
         m: Mocap,
         ax: plt.Axes,
@@ -134,7 +135,9 @@ def __(Mocap, Rotation, Tuple, np, plt):
             # standing in front of the table
             return vec[1], vec[0]
 
-        def draw_line(p1: Tuple[float, float], p2: Tuple[float, float], color: str):
+        def draw_line(
+            p1: Tuple[float, float], p2: Tuple[float, float], color: str
+        ):
             x1, y1 = proj2d(*p1)
             x2, y2 = proj2d(*p2)
             ax.plot([x1, x2], [y1, y2], color=color, alpha=alpha)
@@ -153,8 +156,10 @@ def __(Mocap, Rotation, Tuple, np, plt):
         # draw face
         draw_line(points[0], points[-1], color=color_face)
 
+
     from heapq import heapify, heappop
     from typing import NamedTuple
+
 
     class Event(NamedTuple):
         timestamp_str: str
@@ -167,7 +172,6 @@ def __(Mocap, Rotation, Tuple, np, plt):
 
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
-
     return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
 
 
@@ -271,7 +275,9 @@ def __(
         pos_err_ax = ax["pos_err"]
         pos_err_ax: plt.Axes
         pos_tolerance = 0.05
-        pos_err_data = np.array([pos_err(run.end_pos_delayed.pos) for r in res.runs])
+        pos_err_data = np.array(
+            [pos_err(run.end_pos_delayed.pos) for r in res.runs]
+        )
         pos_err_ax.set_title(
             f"Pos Error Dist\n"
             f"µ={np.mean(pos_err_data):.2f} "
@@ -288,7 +294,9 @@ def __(
         rot_tolerance = 0.5 / np.pi * 180  # what the env considers a success
         rot_err_data = np.array(
             [
-                rotation_distance(np.array(r.end_pos.quat), target_quat) / np.pi * 180
+                rotation_distance(np.array(r.end_pos.quat), target_quat)
+                / np.pi
+                * 180
                 for r in res.runs
                 if None not in r.end_pos.quat
             ]
@@ -411,7 +419,7 @@ def __(
 
             dt += np.diff(times).tolist()
             warn_limit = 500
-            if max(np.diff(times)) > warn_limit:
+            if len(np.diff(times)) and max(np.diff(times)) > warn_limit:
                 print(
                     f"{res.agent} exp {run.experiment} it {run.rep} had ctrl latency over {warn_limit}ms"
                 )
@@ -480,8 +488,7 @@ def __(
         ack_latency_ax.set_ylim(0, 250)
 
         return fig
-
-    return (plotcard,)
+    return plotcard,
 
 
 @app.cell
@@ -489,10 +496,11 @@ def __(plotcard):
     import glob
 
     for filename in [
-        "results-sweep[44]--base=4-seed=1800.json",
+        # "results-sweep[44]--base=4-seed=1800.json",
         "results-sweep37-seed1700.json",
-        "results-sweep31.json",
-        "results-sweep29-i=27-seed=140.json",
+        # "results-sweep31.json",
+        # "results-sweep29-i=27-seed=140.json",
+        # "results-sweep37-seed1700-realtime.json",
     ]:
         plotcard(filename).savefig(f"{filename}_card.pdf")
     return filename, glob
@@ -571,33 +579,8 @@ def __(Event, List, Redis, heapify, heappop, load_exp, np, plt):
 
 
 @app.cell
-def __(msg):
-    msg
-    return
-
-
-@app.cell
 def __():
-    from fancy_gym import make
-
-    env = make("Sweep21", 44)
-    return env, make
-
-
-@app.cell
-def __(env):
-    1 / env.dt
     return
-
-
-@app.cell
-def __(plt):
-    figo, axo = plt.subplots(4, 1)
-    axo[1].remove()
-    axis = figo.add_subplot(4, 4, 6)
-    figo.tight_layout()
-    figo
-    return axis, axo, figo
 
 
 @app.cell
