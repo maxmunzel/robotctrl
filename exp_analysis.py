@@ -17,6 +17,7 @@ def __():
     from typing import Tuple, List
     from redis import Redis
     import matplotlib.gridspec as gridspec
+
     return (
         List,
         Mocap,
@@ -34,18 +35,10 @@ def __():
 
 
 @app.cell
-def __(List, Rotation, np, rotation_distance):
+def __(Rotation, np, rotation_distance):
     import json
 
-
-    def proj_as_2d_rot(quat) -> List[float]:
-        return quat
-        r = Rotation.from_quat(quat)
-        z_rot = r.as_euler("zyx")[1]
-        return Rotation.from_euler("y", z_rot).as_quat()
-
-
-    def project_quaternion_to_z_rotation(quaternion):  # chatgpt
+    def project_quaternion_to_z_rotation(quaternion):
         """
         Projects a quaternion to the space of rotations around the Z-axis (yaw only).
 
@@ -56,22 +49,23 @@ def __(List, Rotation, np, rotation_distance):
         numpy.ndarray: The output quaternion representing a rotation around the Z-axis.
         """
         # Convert the input quaternion to Euler angles with 'ZYX' convention
-        euler_angles = Rotation.from_quat(quaternion).as_euler("ZYX")
+        quaternion = np.array(quaternion)
+        euler_angles = Rotation.from_quat(quaternion[[1, 2, 3, 0]]).as_euler("ZYX")
 
         # Zero out the roll and pitch components (X and Y axes rotations)
-        euler_angles[0] = 0  # Roll
-        euler_angles[1] = 0  # Pitch
+        euler_angles[1] = 0  # Roll
+        euler_angles[2] = 0  # Pitch
 
         # Convert the modified Euler angles back to a quaternion
-        return Rotation.from_euler("ZYX", euler_angles).as_quat()
-
+        return Rotation.from_euler("ZYX", euler_angles).as_quat()[[3, 0, 1, 2]]
 
     def yank_deg(quat) -> float:
         # how many degrees are between the given quat and its flat projection?
         quat = np.array(quat)
         proj = project_quaternion_to_z_rotation(quat)
         return rotation_distance(proj, quat) / np.pi * 180
-    return json, proj_as_2d_rot, project_quaternion_to_z_rotation, yank_deg
+
+    return json, project_quaternion_to_z_rotation, yank_deg
 
 
 @app.cell
@@ -79,7 +73,8 @@ def __(Result):
     def load_exp(path: str) -> Result:
         with open(path) as f:
             return Result.model_validate_json(f.read())
-    return load_exp,
+
+    return (load_exp,)
 
 
 @app.cell
@@ -118,7 +113,6 @@ def __(Mocap, Rotation, Tuple, np, plt):
         M[:3, 3] = np.array(m.pos).flatten()
         return M.copy()
 
-
     def draw_pos(
         m: Mocap,
         ax: plt.Axes,
@@ -135,9 +129,7 @@ def __(Mocap, Rotation, Tuple, np, plt):
             # standing in front of the table
             return vec[1], vec[0]
 
-        def draw_line(
-            p1: Tuple[float, float], p2: Tuple[float, float], color: str
-        ):
+        def draw_line(p1: Tuple[float, float], p2: Tuple[float, float], color: str):
             x1, y1 = proj2d(*p1)
             x2, y2 = proj2d(*p2)
             ax.plot([x1, x2], [y1, y2], color=color, alpha=alpha)
@@ -156,10 +148,8 @@ def __(Mocap, Rotation, Tuple, np, plt):
         # draw face
         draw_line(points[0], points[-1], color=color_face)
 
-
     from heapq import heapify, heappop
     from typing import NamedTuple
-
 
     class Event(NamedTuple):
         timestamp_str: str
@@ -172,6 +162,7 @@ def __(Mocap, Rotation, Tuple, np, plt):
 
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
+
     return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
 
 
@@ -197,15 +188,15 @@ def __(
     load_exp,
     np,
     plt,
-    proj_as_2d_rot,
+    project_quaternion_to_z_rotation,
     rotation_distance,
     yank_deg,
 ):
     def plotcard(filename: str) -> plt.Figure:
         res = load_exp(filename)
         for run_ in res.runs:
-            run_.end_pos.quat = proj_as_2d_rot(run_.end_pos.quat)
-            run_.start_pos.quat = proj_as_2d_rot(run_.start_pos.quat)
+            run_.end_pos.quat = project_quaternion_to_z_rotation(run_.end_pos.quat)
+            run_.start_pos.quat = project_quaternion_to_z_rotation(run_.start_pos.quat)
 
         target_pos = np.array([0.51505285, 0.0, 0.0])
         target_quat = (
@@ -275,9 +266,7 @@ def __(
         pos_err_ax = ax["pos_err"]
         pos_err_ax: plt.Axes
         pos_tolerance = 0.05
-        pos_err_data = np.array(
-            [pos_err(run.end_pos_delayed.pos) for r in res.runs]
-        )
+        pos_err_data = np.array([pos_err(run.end_pos_delayed.pos) for r in res.runs])
         pos_err_ax.set_title(
             f"Pos Error Dist\n"
             f"µ={np.mean(pos_err_data):.2f} "
@@ -294,9 +283,7 @@ def __(
         rot_tolerance = 0.5 / np.pi * 180  # what the env considers a success
         rot_err_data = np.array(
             [
-                rotation_distance(np.array(r.end_pos.quat), target_quat)
-                / np.pi
-                * 180
+                rotation_distance(np.array(r.end_pos.quat), target_quat) / np.pi * 180
                 for r in res.runs
                 if None not in r.end_pos.quat
             ]
@@ -425,13 +412,13 @@ def __(
                 )
         dt = np.array(dt)
         latency_ax.plot(dt[dt < 1000000], alpha=0.3)
-        latency_ax.axhline(50, color="green")
+        latency_ax.axhline(20, color="green")
         ctrl_limit = 100
         latency_ax.set_title(
             f"Ctrl dt med={np.median(dt):.1f}\n"
             f"{np.sum(dt>ctrl_limit)} times >{ctrl_limit}ms"
         )
-        latency_ax.set_ylim(0, 750)
+        latency_ax.set_ylim(0, 100)
 
         # Ctrl Error
         ack_latencies = []
@@ -488,7 +475,8 @@ def __(
         ack_latency_ax.set_ylim(0, 250)
 
         return fig
-    return plotcard,
+
+    return (plotcard,)
 
 
 @app.cell
@@ -497,100 +485,14 @@ def __(plotcard):
 
     for filename in [
         # "results-sweep[44]--base=4-seed=1800.json",
-        "results-sweep37-seed1700.json",
+        # "results-sweep37-seed1700.json",
         # "results-sweep31.json",
         # "results-sweep29-i=27-seed=140.json",
-        # "results-sweep37-seed1700-realtime.json",
+        # "results-sweep37-seed1700-realtime-3.json",
+        "results-sweep37-seed1700-realtime-damp12.json",
     ]:
         plotcard(filename).savefig(f"{filename}_card.pdf")
     return filename, glob
-
-
-@app.cell
-def __(Event, List, Redis, heapify, heappop, load_exp, np, plt):
-    lfig, latency_ax = plt.subplots()
-
-    if True:
-        for run in load_exp("results-sweep[44]--base=4-seed=1800.json").runs:
-            r = Redis(decode_responses=True)
-
-            # build event heap
-            events = []
-            events: List[Event]
-            for timestamp, msg in r.xrange(
-                "cart_cmd",
-                min=f"{int(run.start_pos.time_redis*1000)}-0",
-                max=f"{int(run.end_pos.time_redis*1000)}-0",
-                count=1000,
-            ):
-                x = float(msg["x"])
-                y = float(msg["y"])
-                events.append(Event(timestamp, "cmd", np.array([x, y])))
-
-            for timestamp, msg in r.xrange(
-                "ack",
-                min=f"{int(run.start_pos.time_redis*1000)}-0",
-                max=f"{int(run.end_pos.time_redis*1000)}-0",
-                count=1000,
-            ):
-                x = float(msg["x"])
-                y = float(msg["y"])
-                events.append(Event(timestamp, "ack", np.array([x, y])))
-
-            heapify(events)
-            last_cmd: Event = None
-            last_ack: Event = None
-
-            while events[0].kind != "cmd":
-                heappop(events)
-
-            ctrl_errors = []
-            ctrl_latencies = []
-            while events:
-                e = heappop(events)
-                if e.kind == "cmd":
-                    last_cmd = e
-                else:
-                    last_ack = e
-                    ctrl_errors.append(e.dist(last_cmd))
-                    ctrl_latencies.append(e.timestamp_ms - last_cmd.timestamp_ms)
-
-            latency_ax.plot(ctrl_errors, alpha=0.3)
-            # latency_ax.axhline(50)
-            latency_ax.set_title(r"\hat x")
-
-    lfig
-    return (
-        ctrl_errors,
-        ctrl_latencies,
-        e,
-        events,
-        last_ack,
-        last_cmd,
-        latency_ax,
-        lfig,
-        msg,
-        r,
-        run,
-        timestamp,
-        x,
-        y,
-    )
-
-
-@app.cell
-def __():
-    return
-
-
-@app.cell
-def __():
-    return
-
-
-@app.cell
-def __():
-    return
 
 
 if __name__ == "__main__":
