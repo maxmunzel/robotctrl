@@ -114,7 +114,7 @@ def __(Mocap, Rotation, Tuple, np, plt):
 
 @app.cell
 def __(load_exp):
-    mocap = load_exp("results-sweep[44]--base=4-seed=1800.json").runs[0].start_pos
+    mocap = load_exp("results-sweep46-1700-2024-04-04.json").runs[0].start_pos
     return (mocap,)
 
 
@@ -130,150 +130,9 @@ def __(
     io,
     load_exp,
     np,
-    plt,
     sys,
 ):
-    def plotcard(
-        filename: str, run_index: int = 0, damping=20, mass=1, maxforce=20, kp=20
-    ) -> plt.Figure:
-        res = load_exp(filename)
-        run: Run = res.runs[run_index]
-        r = Redis(decode_responses=True)
-
-        # build event heap
-        events = []
-        events: List[Event]
-        for timestamp, msg in r.xrange(
-            "cart_cmd",
-            min=f"{int(run.start_pos.time_redis*1000)}-0",
-            max=f"{int(run.end_pos.time_redis*1000)}-0",
-            count=1000,
-        ):
-            x = float(msg["x"])
-            y = float(msg["y"])
-            events.append(Event(timestamp, "cmd", np.array([x, y])))
-
-        for timestamp, msg in r.xrange(
-            "ack",
-            min=f"{int(run.start_pos.time_redis*1000)}-0",
-            max=f"{int(run.end_pos.time_redis*1000)}-0",
-            count=1000,
-        ):
-            x = float(msg["x"])
-            y = float(msg["y"])
-            events.append(Event(timestamp, "ack", np.array([x, y])))
-
-        heapify(events)
-        last_cmd: Event = None
-        last_ack: Event = None
-
-        while events[0].kind != "cmd":
-            heappop(events)
-
-        last_cmd = heappop(events)
-
-        while events[0].kind != "ack":
-            heappop(events)
-
-        last_ack = heappop(events)
-
-        fig, ax = plt.subplots()
-
-        pos_ax = ax
-        cmds = list()
-        acks = list()
-
-        while events:
-            e = heappop(events)
-            if e.kind == "cmd":
-                cmds.append(e.pos)
-                last_cmd = e
-            else:
-                acks.append(e.pos)
-                last_ack = e
-
-        l = min(len(cmds), len(acks))
-        cmds = np.array(cmds[:l])
-        acks = np.array(acks[:l])
-        pos_ax.plot(cmds[:, 0], cmds[:, 1], color="green", label="cmd")
-        pos_ax.plot(acks[:, 0], acks[:, 1], color="red", label="robot")
-
-        finger_pos = []
-        env = BoxPushingDense()
-        env.reset()
-
-        maxforce = 47.75
-
-        env.replacements_by_file = {
-            "finger.xml": [
-                ('damping="15"', f'damping="{damping}"'),
-                ('mass="1.0"', f'mass="{mass}"'),
-                ('forcerange="-12 12"', f'forcerange="-{maxforce} {maxforce}"'),
-                ('kp="20"', f'kp="{kp}"'),
-            ]
-        }
-
-        env.randomize()
-
-        env.data.joint("finger_x_joint").qpos = cmds[0][0]
-        env.data.joint("finger_y_joint").qpos = cmds[0][1]
-        try:
-            stdout = sys.stdout
-            sys.stdout = io.StringIO()
-            for x, y in cmds:
-                env.step([x, y])
-                finger_pos.append(env.data.body("finger").xpos.copy()[:2])
-        finally:
-            sys.stdout = stdout
-
-        finger_pos = np.array(finger_pos)
-        pos_ax.plot(finger_pos[:, 0], finger_pos[:, 1], color="orange", label="sim")
-        fig.legend()
-
-        error = []
-        for r, f in zip(acks, finger_pos):
-            error.append(np.linalg.norm(r - f))
-
-        print(f"Mean Error: {np.mean(error):.3f}")
-
-        return fig
-
-    return (plotcard,)
-
-
-@app.cell
-def __(plotcard):
-    import glob
-
-    for filename in [
-        # "results-sweep[44]--base=4-seed=1800.json",
-        # "results-sweep37-seed1700.json",
-        # "results-sweep31.json",
-        # "results-sweep29-i=27-seed=140.json",
-        # "results-sweep37-seed1700-realtime-3.json",
-        # "results-sweep37-seed1700-realtime-3-busy-wait.json",
-        "results-sweep45-1700-2024-03-28.json",
-    ]:
-        fig = plotcard(filename, 0)
-    fig
-    return fig, filename, glob
-
-
-@app.cell
-def __(
-    BoxPushingDense,
-    Event,
-    List,
-    Redis,
-    Run,
-    heapify,
-    heappop,
-    io,
-    load_exp,
-    np,
-    sys,
-):
-    res = load_exp("results-sweep45-1700-2024-03-28.json")
+    res = load_exp("results-sweep46-1700-2024-04-04.json")
     run: Run = res.runs[-6]
     r = Redis(decode_responses=True)
 
@@ -330,8 +189,8 @@ def __(
     cmds = np.array(cmds[:l])
     acks = np.array(acks[:l])
 
-    def eval_params(maxforce, mass, damping, kp):
-        if min(maxforce, mass, kp) <= 0 or damping < 0:
+    def eval_params(mass, damping, kp):
+        if min(mass, kp) <= 0 or damping < 0:
             return 1
         finger_pos = []
 
@@ -343,10 +202,10 @@ def __(
 
             env.replacements_by_file = {
                 "finger.xml": [
-                    ('damping="15"', f'damping="{damping}"'),
+                    ('damping="10"', f'damping="{damping}"'),
                     ('mass="1.0"', f'mass="{mass}"'),
-                    ('forcerange="-12 12"', f'forcerange="-{maxforce} {maxforce}"'),
-                    ('kp="20"', f'kp="{kp}"'),
+                    # ('forcerange="-12 12"', f'forcerange="-{maxforce} {maxforce}"'),
+                    ('kp="200"', f'kp="{kp}"'),
                 ]
             }
 
@@ -390,7 +249,7 @@ def __(
 
 @app.cell
 def __(eval_params):
-    eval_params(20, 1, 0, 20)
+    eval_params(1, 0, 20)
     return
 
 
@@ -410,9 +269,9 @@ def __(eval_params):
         f=eval_params,
         pbounds={
             "mass": (1, 10),
-            "maxforce": (1, 100),
-            "damping": (1, 50),
-            "kp": (1, 200),
+            # "maxforce": (10000, 10000),
+            "damping": (1, 200),
+            "kp": (1, 2000),
         },
     )
     return BayesianOptimization, optimizer
@@ -425,7 +284,7 @@ def __(optimizer):
             "damping": 14.180179681179924,
             "kp": 168.49563075463564,
             "mass": 1.0,
-            "maxforce": 47.74829824923389,
+            # "maxforce": 47.74829824923389,
         }
     )
     optimizer.probe(
@@ -433,7 +292,7 @@ def __(optimizer):
             "damping": 3,
             "kp": 20,
             "mass": 1.0,
-            "maxforce": 17,
+            # "maxforce": 17,
         }
     )
     optimizer.probe(
@@ -441,7 +300,7 @@ def __(optimizer):
             "damping": 11.782275037281728,
             "kp": 140.5756458718141,
             "mass": 1.0,
-            "maxforce": 34.494222061526806,
+            # "maxforce": 34.494222061526806,
         }
     )
     return
@@ -449,7 +308,7 @@ def __(optimizer):
 
 @app.cell
 def __(optimizer):
-    optimizer.maximize(init_points=100, n_iter=400)
+    optimizer.maximize(init_points=1000, n_iter=4000)
     return
 
 
@@ -460,20 +319,45 @@ def __(optimizer):
 
 
 @app.cell
-def __(filename, optimizer, plotcard):
-    plotcard(filename, -1, **optimizer.max["params"])
+def __(optimizer):
+    optimizer.space.target
     return
+
+
+@app.cell
+def __():
+    import json
+
+    return (json,)
 
 
 @app.cell
 def __(optimizer):
-    str(optimizer.max["params"])
+    optimizer.space.params
     return
 
 
 @app.cell
-def __(filename, plotcard):
-    plotcard(filename, -1, {"damping": 200, "kp": 20, "mass": 1.0, "maxforce": 20})
+def __(json, optimizer):
+    points = []
+    for dkm, score in zip(optimizer.space.params, optimizer.space.target):
+        damp, kp, mass = dkm
+        points.append(
+            {
+                "score": score,
+                "mass": mass,
+                "kp": kp,
+                "damp": damp,
+            }
+        )
+    with open("points.json", "w") as f:
+        json.dump(points, f, indent=2)
+    return damp, dkm, f, kp, mass, points, score
+
+
+@app.cell
+def __(optimizer):
+    optimizer.space.keys
     return
 
 
