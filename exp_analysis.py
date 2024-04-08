@@ -190,9 +190,8 @@ def __(
     plt,
     project_quaternion_to_z_rotation,
     rotation_distance,
-    yank_deg,
 ):
-    def plotcard(filename: str) -> plt.Figure:
+    def plotcard(filename: str, delayed: bool) -> plt.Figure:
         res = load_exp(filename)
         for run_ in res.runs:
             run_.end_pos.quat = project_quaternion_to_z_rotation(run_.end_pos.quat)
@@ -224,7 +223,7 @@ def __(
             left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.4, wspace=0.4
         )
 
-        fig.suptitle(f"{res.agent}\n\n", fontsize=16)
+        fig.suptitle(f"{res.agent}{' (delayed)' if delayed else ''}\n\n", fontsize=16)
 
         # Final Position
 
@@ -237,10 +236,15 @@ def __(
         final_pos_ax.set_ylim(x + d, x - d)
         final_pos_ax.set_xlim(y - d, y + d)
         final_pos_ax.set_aspect("equal")
-        final_pos_ax.set_title("Final Position")
+        final_pos_ax.set_title(f"Final Position")
+
         for run in res.runs:
+            if delayed:
+                end_pos = run.end_pos_delayed
+            else:
+                end_pos = run.end_pos
             draw_pos(
-                run.end_pos,
+                end_pos,
                 final_pos_ax,
                 alpha=0.1,
                 color_body="orange",
@@ -266,15 +270,24 @@ def __(
         pos_err_ax = ax["pos_err"]
         pos_err_ax: plt.Axes
         pos_tolerance = 0.05
-        pos_err_data = np.array([pos_err(run.end_pos_delayed.pos) for r in res.runs])
+        if delayed:
+            pos_err_data = [pos_err(r.end_pos_delayed.pos) for r in res.runs]
+        else:
+            pos_err_data = [pos_err(r.end_pos.pos) for r in res.runs]
+
+        pos_err_data = np.array(pos_err_data)
         pos_err_ax.set_title(
             f"Pos Error Dist\n"
             f"µ={np.mean(pos_err_data):.2f} "
             f"σ={np.var(pos_err_data)**.5:.2f} "
             f"suc={np.mean(pos_err_data<pos_tolerance):.2f}"
         )
-        pos_err_ax.hist(pos_err_data, alpha=1, bins=np.arange(0, 1, 0.01))
-        pos_err_ax.set_xlim(0, 0.3)
+        pos_err_ax.hist(
+            pos_err_data,
+            alpha=1,
+            # bins=np.arange(0, 1, 0.01),
+        )
+        pos_err_ax.set_xlim(0, 0.5)
         pos_err_ax.axvline(pos_tolerance, color="green", linestyle="--")
 
         # Rot Error Plot
@@ -283,7 +296,12 @@ def __(
         rot_tolerance = 0.5 / np.pi * 180  # what the env considers a success
         rot_err_data = np.array(
             [
-                rotation_distance(np.array(r.end_pos.quat), target_quat) / np.pi * 180
+                rotation_distance(
+                    np.array(r.end_pos_delayed.quat if delayed else r.end_pos.quat),
+                    target_quat,
+                )
+                / np.pi
+                * 180
                 for r in res.runs
                 if None not in r.end_pos.quat
             ]
@@ -328,57 +346,23 @@ def __(
                         color_face="blue",
                     )
 
-        # Start Yank
-        start_yank_ax = ax["start_yank"]
-
-        start_yanks = []
-        for run in res.runs:
-            if None in run.start_pos.quat:
-                continue
-            yank = yank_deg(run.start_pos.quat)
-            if not np.isnan(yank):
-                start_yanks.append(yank)
-        color = None if np.max(start_yanks) < 5 else "red"
-        start_yank_ax.hist(start_yanks, color=color)
-        start_yank_ax.set_xlim(0, 5)
-        start_yank_ax.set_title(
-            "Start Yank /deg\n"
-            f"µ={np.mean(start_yanks):.2f} "
-            f"max={np.max(start_yanks):.2f}"
-        )
-
-        # End Yank
-        end_yank_ax = ax["end_yank"]
-
-        end_yanks = []
-        for run in res.runs:
-            if None in run.end_pos.quat:
-                continue
-            yank = yank_deg(run.end_pos.quat)
-            if not np.isnan(yank):
-                end_yanks.append(yank)
-        color = None if np.max(end_yanks) < 5 else "red"
-        end_yank_ax.hist(end_yanks, color=color)
-        end_yank_ax.set_xlim(0, 5)
-        end_yank_ax.set_title(
-            "End Yank /deg\n"
-            f"µ={np.mean(end_yanks):.2f} "
-            f"max={np.max(end_yanks):.2f}"
-        )
-
-        # fig.tight_layout()
-
         # Score
         score_ax = ax["score"]
         scores = []
         for run in res.runs:
             if None in run.end_pos.quat:
                 continue
-            box_goal_dist = np.linalg.norm(run.end_pos.pos - target_pos)
+            if delayed:
+                box_goal_dist = np.linalg.norm(run.end_pos_delayed.pos - target_pos)
+            else:
+                box_goal_dist = np.linalg.norm(run.end_pos.pos - target_pos)
 
             box_goal_pos_dist_reward = -3.5 * box_goal_dist * 100
             box_goal_rot_dist_reward = (
-                -rotation_distance(np.array(run.end_pos.quat), target_quat)
+                -rotation_distance(
+                    np.array(run.end_pos_delayed.quat if delayed else run.end_pos.quat),
+                    target_quat,
+                )
                 / np.pi
                 * 100
             )
@@ -469,7 +453,7 @@ def __(
             ctrl_err_ax.plot(ctrl_errors, alpha=0.3)
             # ctrl_err_ax.axhline(50)
             ctrl_err_ax.set_title("Positional Ctrl Error")
-            ctrl_err_ax.set_ylim(0, 0.2)
+            ctrl_err_ax.set_ylim(0, 0.3)
         ack_latency_ax.set_title("Ack Latency /ms")
         ack_latency_ax.plot(ack_latencies, alpha=0.3)
         ack_latency_ax.set_ylim(0, 250)
@@ -483,16 +467,17 @@ def __(
 def __(plotcard):
     import glob
 
-    for filename in [
-        # "results-sweep[44]--base=4-seed=1800.json",
-        # "results-sweep37-seed1700.json",
-        # "results-sweep31.json",
-        # "results-sweep29-i=27-seed=140.json",
-        # "results-sweep37-seed1700-realtime-3.json",
-        "results-sweep37-seed1700-realtime-damp12.json",
-    ]:
-        plotcard(filename).savefig(f"{filename}_card.pdf")
-    return filename, glob
+    for filename in glob.glob("results*46*.json"):
+        for delayed in [True, False]:
+            plotcard(filename, delayed=delayed).savefig(
+                f"{filename}_card{'_delayed' if delayed else ''}.pdf"
+            )
+    return delayed, filename, glob
+
+
+@app.cell
+def __():
+    return
 
 
 if __name__ == "__main__":
