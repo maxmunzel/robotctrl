@@ -11,7 +11,6 @@ def main(
     z_height: float = 0.3,
     redis_host: str = "localhost",
     polymetis_ip: str = "10.10.10.210",
-    rate_limit_hz: int = 0,
 ):
     r = redis.Redis(redis_host, decode_responses=True)
 
@@ -34,8 +33,6 @@ def main(
     print("Ready.")
     try:
         while True:
-            if rate_limit_hz:
-                time.sleep(1 / rate_limit_hz)
             messages = r.xread({cmd_stream: last_id}, block=50, count=1)
             if messages:
                 message_id, payload = messages[0][1][-1]
