@@ -11,7 +11,7 @@ def main(
     z_height: float = 0.3,
     redis_host: str = "localhost",
     polymetis_ip: str = "10.10.10.210",
-    rate_limit_hz: int = 50,
+    rate_limit_hz: int = 0,
 ):
     r = redis.Redis(redis_host, decode_responses=True)
 
@@ -87,6 +87,8 @@ def main(
                     print("RESET: Please move box and press enter to confirm.")
                     # Move robot just outside the box in a vertical movement
                     ee_pos, _ = robot.get_ee_pose()
+                    robot.update_desired_ee_pose(ee_pos, goal_quat)
+                    time.sleep(1)
                     ee_pos[2] = 0.35
                     robot.move_to_ee_pose(
                         position=ee_pos, orientation=goal_quat, time_to_go=2.0
