@@ -24,15 +24,14 @@ def main(
     robot = RobotInterface(ip_address=polymetis_ip)
 
     robot.go_home()
-    print("Ready.")
+    robot.start_joint_impedance()
 
-    # while not r.xread({cmd_stream: last_id}, block=1000, count=1):
-    #    print("Waiting for control signals")
     x = None
     y = None
 
     goal_quat = torch.Tensor([0.92387975, 0.3826829, 0.0, 0.0])
     first_cmd = True
+    print("Ready.")
     try:
         while True:
             if rate_limit_hz:
