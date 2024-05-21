@@ -21,7 +21,6 @@ def __():
     import sys
     import io
     from functools import lru_cache
-
     return (
         BoxPushingDense,
         List,
@@ -47,8 +46,7 @@ def __(Result):
     def load_exp(path: str) -> Result:
         with open(path) as f:
             return Result.model_validate_json(f.read())
-
-    return (load_exp,)
+    return load_exp,
 
 
 @app.cell
@@ -67,14 +65,13 @@ def __(np):
 
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
-
     return Event, NamedTuple, heapify, heappop
 
 
 @app.cell
 def __(load_exp):
     mocap = load_exp("results-sweep45-1700-2024-03-28.json").runs[0].start_pos
-    return (mocap,)
+    return mocap,
 
 
 @app.cell
@@ -92,8 +89,8 @@ def __(
     np,
     sys,
 ):
-    res = load_exp("results-sweep46-1700-2024-04-04.json")
-    run: Run = res.runs[-1]
+    res = load_exp("results-sweep71-seed=2600-w_scale=3-g_scale=1-sweep=71-cpus=80-alpha=10-lr_policy=0.0001-hidden=[64,64]-critic=[32,32].json")
+    run: Run = res.runs[-6]
     r = Redis(decode_responses=True)
 
     # build event heap
@@ -168,6 +165,9 @@ def __(
                     # ('forcerange="-12 12"', ""),
                     # ('forcelimited="true"', ""),
                     ('kp="200"', f'kp="{kp}"'),
+                ],
+                "push_box.xml": [
+                    ("5308", "1")
                 ]
             }
 
@@ -185,7 +185,6 @@ def __(
         finger_pos = np.array(finger_pos)
 
         return finger_pos
-
     return (
         acks,
         cmds,
@@ -219,17 +218,16 @@ def __(acks, cmds, np, simulate_robot):
             sim_error.append(np.linalg.norm(c - f))
         return np.array(sim_error)
 
-    return a, c, constraint, real_error
+    high = (1,12, 100)
+    low = (1, 12, 50)
+    #low = (5, 14, 443)
+    # low = (5, 14, 200)
+    return a, c, constraint, high, low, real_error
 
 
 @app.cell
-def __(constraint, plt, real_error):
-    high = (1, 10, 200)
-    low = (1, 10, 70)
-    low = (5, 14, 443)
-    # low = (5, 14, 200)
-
-    index = 90
+def __(constraint, high, low, plt, real_error):
+    index = 380
 
     # mdk=(5,40,700)
     # mdk = (5, 40, 400)
@@ -242,7 +240,7 @@ def __(constraint, plt, real_error):
 
     fig_err.legend()
     fig_err
-    return ax_err, color, fig_err, high, index, label, low, mdk
+    return ax_err, color, fig_err, index, label, mdk
 
 
 @app.cell
@@ -258,6 +256,7 @@ def __(acks, cmds, high, index, low, plt, simulate_robot):
         ax.plot(data[:, 0], data[:, 1], label=label2, color=color2)
         ax.scatter(data[index, 0], data[index, 1], color=color2)
 
+    ax.axis("equal")
     fig.legend()
     fig
     return ax, color2, data, data_sources, fig, label2
@@ -296,7 +295,7 @@ def __(Redis, np, plt, res):
         return fig_speeds
 
     plot_speeds()
-    return (plot_speeds,)
+    return plot_speeds,
 
 
 @app.cell
@@ -328,7 +327,7 @@ def __(Redis, plt, res):
         return fig_traj
 
     plot_trajs()
-    return (plot_trajs,)
+    return plot_trajs,
 
 
 @app.cell

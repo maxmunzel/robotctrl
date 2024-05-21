@@ -17,7 +17,6 @@ def __():
     from typing import Tuple, List
     from redis import Redis
     import matplotlib.gridspec as gridspec
-
     return (
         List,
         Mocap,
@@ -64,7 +63,6 @@ def __(Rotation, np, rotation_distance):
         quat = np.array(quat)
         proj = project_quaternion_to_z_rotation(quat)
         return rotation_distance(proj, quat) / np.pi * 180
-
     return json, project_quaternion_to_z_rotation, yank_deg
 
 
@@ -73,8 +71,7 @@ def __(Result):
     def load_exp(path: str) -> Result:
         with open(path) as f:
             return Result.model_validate_json(f.read())
-
-    return (load_exp,)
+    return load_exp,
 
 
 @app.cell
@@ -162,7 +159,6 @@ def __(Mocap, Rotation, Tuple, np, plt):
 
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
-
     return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
 
 
@@ -213,7 +209,7 @@ def __(
                 ["final_pos", "pos_err", "rot_err"],
                 ["score", "ctrl_dt", "ctrl_err"],
                 ["start", "start", "start"],
-                ["start_yank", "end_yank", "ack_latency"],
+                ["traj", "end_yank", "ack_latency"],
             ],
             figsize=(7.5, 12),
             tight_layout=True,
@@ -437,7 +433,7 @@ def __(
             last_cmd: Event = None
             last_ack: Event = None
 
-            while events[0].kind != "cmd":
+            while events and events[0].kind != "cmd":
                 heappop(events)
 
             ctrl_errors = []
@@ -458,17 +454,39 @@ def __(
         ack_latency_ax.plot(ack_latencies, alpha=0.3)
         ack_latency_ax.set_ylim(0, 250)
 
-        return fig
+        colors = ["red", "green", "blue"]
+        ax_traj = ax["traj"]
+        ax_traj.set_title("Trajectories")
+        for i, run in enumerate(res.runs):
+            r = Redis(decode_responses=True)
+            xs = []
+            ys = []
+            for timestamp, msg in r.xrange(
+                "cart_cmd",
+                min=f"{int(run.start_pos.time_redis*1000)}-0",
+                max=f"{int(run.end_pos.time_redis*1000)}-0",
+                count=2000,
+            ):
+                x = float(msg["x"])
+                y = float(msg["y"])
+                xs.append(x)
+                ys.append(y)
+            # swap x/y and mirror x to resemble operator view
+            ax_traj.set_ylim(1, 0)
+            ax_traj.set_xlim(-.5, .5)
+            ax_traj.plot(ys, xs, alpha=0.2, color=colors[i // 12])
 
-    return (plotcard,)
+
+        return fig
+    return plotcard,
 
 
 @app.cell
 def __(plotcard):
     import glob
 
-    for filename in glob.glob("results*46*.json"):
-        for delayed in [True, False]:
+    for filename in glob.glob("result*94*.json"):
+        for delayed in [False, True]:
             plotcard(filename, delayed=delayed).savefig(
                 f"{filename}_card{'_delayed' if delayed else ''}.pdf"
             )

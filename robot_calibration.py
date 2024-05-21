@@ -20,7 +20,6 @@ def __():
     import matplotlib.gridspec as gridspec
     import sys
     import io
-
     return (
         BoxPushingDense,
         List,
@@ -45,8 +44,7 @@ def __(Result):
     def load_exp(path: str) -> Result:
         with open(path) as f:
             return Result.model_validate_json(f.read())
-
-    return (load_exp,)
+    return load_exp,
 
 
 @app.cell
@@ -108,14 +106,13 @@ def __(Mocap, Rotation, Tuple, np, plt):
 
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
-
     return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
 
 
 @app.cell
 def __(load_exp):
     mocap = load_exp("results-sweep46-1700-2024-04-04.json").runs[0].start_pos
-    return (mocap,)
+    return mocap,
 
 
 @app.cell
@@ -132,7 +129,7 @@ def __(
     np,
     sys,
 ):
-    res = load_exp("results-sweep46-1700-2024-04-04.json")
+    res = load_exp("results-sweep71-seed=2600-w_scale=3-g_scale=1-sweep=71-cpus=80-alpha=10-lr_policy=0.0001-hidden=[64,64]-critic=[32,32].json")
     run: Run = res.runs[-6]
     r = Redis(decode_responses=True)
 
@@ -227,7 +224,6 @@ def __(
             error.append(np.linalg.norm(r - f) ** 2)
 
         return -np.sqrt(np.mean(error))
-
     return (
         acks,
         cmds,
@@ -258,7 +254,7 @@ def __():
     from scipy.optimize import minimize
 
     # minimize(eval_params, [17,1,3])
-    return (minimize,)
+    return minimize,
 
 
 @app.cell
@@ -327,8 +323,7 @@ def __(optimizer):
 @app.cell
 def __():
     import json
-
-    return (json,)
+    return json,
 
 
 @app.cell
