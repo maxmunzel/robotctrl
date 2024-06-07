@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.3.4"
+__generated_with = "0.6.0"
 app = marimo.App()
 
 
@@ -160,16 +160,6 @@ def __(Mocap, Rotation, Tuple, np, plt):
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
     return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
-
-
-@app.cell
-def __(affine_matrix_to_xpos_and_xquat, load_exp, mocap_to_44marix):
-    mocap = load_exp("results-sweep[44]--base=4-seed=1800.json").runs[0].start_pos
-    M0 = mocap_to_44marix(mocap)
-    xpos0, xquat0 = affine_matrix_to_xpos_and_xquat(M0)
-    print(xquat0)
-    print(mocap.quat)
-    return M0, mocap, xpos0, xquat0
 
 
 @app.cell
@@ -485,7 +475,7 @@ def __(
 def __(plotcard):
     import glob
 
-    for filename in glob.glob("result*06-06*.json"):
+    for filename in glob.glob("*06-07*.json"):
         for delayed in [False, True]:
             plotcard(filename, delayed=delayed).savefig(
                 f"{filename}_card{'_delayed' if delayed else ''}.pdf"
