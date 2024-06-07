@@ -485,7 +485,7 @@ def __(
 def __(plotcard):
     import glob
 
-    for filename in glob.glob("result*27-05*.json"):
+    for filename in glob.glob("result*06-06*.json"):
         for delayed in [False, True]:
             plotcard(filename, delayed=delayed).savefig(
                 f"{filename}_card{'_delayed' if delayed else ''}.pdf"
