@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.3.4"
+__generated_with = "0.6.0"
 app = marimo.App(width="medium")
 
 
@@ -70,7 +70,7 @@ def __(np):
 
 @app.cell
 def __(load_exp):
-    mocap = load_exp("results-sweep45-1700-2024-03-28.json").runs[0].start_pos
+    mocap = load_exp("results-2024-06-07-sweep79.json").runs[0].start_pos
     return mocap,
 
 
@@ -89,7 +89,8 @@ def __(
     np,
     sys,
 ):
-    res = load_exp("results-sweep71-seed=2600-w_scale=3-g_scale=1-sweep=71-cpus=80-alpha=10-lr_policy=0.0001-hidden=[64,64]-critic=[32,32].json")
+    res = load_exp("old/results-sweep71-seed=2600-w_scale=3-g_scale=1-sweep=71-cpus=80-alpha=10-lr_policy=0.0001-hidden=[64,64]-critic=[32,32].json")
+    res = load_exp("results-2024-06-07-sweep79.json")
     run: Run = res.runs[-6]
     r = Redis(decode_responses=True)
 
@@ -162,12 +163,13 @@ def __(
                 "finger.xml": [
                     ('damping="10"', f'damping="{damping}"'),
                     ('mass="1.0"', f'mass="{mass}"'),
+                    (".60", ".80"),
                     # ('forcerange="-12 12"', ""),
                     # ('forcelimited="true"', ""),
                     ('kp="200"', f'kp="{kp}"'),
                 ],
                 "push_box.xml": [
-                    ("5308", "1")
+                    #("5308", "1")
                 ]
             }
 
@@ -226,39 +228,47 @@ def __(acks, cmds, np, simulate_robot):
 
 
 @app.cell
-def __(constraint, high, low, plt, real_error):
-    index = 380
+def __(constraint, high, low, np, plt, real_error):
+    index = 200
 
     # mdk=(5,40,700)
     # mdk = (5, 40, 400)
     fig_err, ax_err = plt.subplots()
-    ax_err.plot(real_error, label="real", color="violet")
+    time = np.linspace(0,8,len(real_error))
 
-    for mdk, label, color in [(low, "low", "blue"), (high, "high", "red")]:
-        ax_err.plot(constraint(*mdk), label=label, color=color)
-        ax_err.axvline(index)
+    ax_err.plot(time, real_error, label="real", color="green")
+
+
+    for mdk, label, color in [(low, "slow", "blue"), (high, "fast", "orange")]:
+        error = constraint(*mdk)
+        time = np.linspace(0,8,len(error))
+        ax_err.plot(time, error, label=label, color=color)
+        ax_err.axvline(index/400 * 8)
+
+    ax_err.set_xlabel("time [s]")
+    ax_err.set_ylabel("control error [m]")
 
     fig_err.legend()
-    fig_err
-    return ax_err, color, fig_err, index, label, mdk
+    fig_err.savefig("../intermediate_presentation/media/ctrl_error.pdf")
+    return ax_err, color, error, fig_err, index, label, mdk, time
 
 
 @app.cell
 def __(acks, cmds, high, index, low, plt, simulate_robot):
     fig, ax = plt.subplots()
     data_sources = [
-        (cmds, "cmds", "green"),
-        (acks, "acks", "violet"),
-        (simulate_robot(*low), "low", "blue"),
-        (simulate_robot(*high), "high", "red"),
+        (cmds, "Command", "black"),
+        (acks, "Real Robot", "green"),
+        (simulate_robot(*low), "Slow", "blue"),
+        (simulate_robot(*high), "Fast", "orange"),
     ]
     for data, label2, color2 in data_sources:
         ax.plot(data[:, 0], data[:, 1], label=label2, color=color2)
-        ax.scatter(data[index, 0], data[index, 1], color=color2)
+        ax.scatter(data[index, 0], data[index, 1], marker="x", color=color2)
 
     ax.axis("equal")
     fig.legend()
-    fig
+    fig.savefig("../intermediate_presentation/media/traj_error.pdf")
     return ax, color2, data, data_sources, fig, label2
 
 
