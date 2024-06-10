@@ -17,6 +17,7 @@ def __():
     from typing import Tuple, List
     from redis import Redis
     import matplotlib.gridspec as gridspec
+
     return (
         List,
         Mocap,
@@ -63,6 +64,7 @@ def __(Rotation, np, rotation_distance):
         quat = np.array(quat)
         proj = project_quaternion_to_z_rotation(quat)
         return rotation_distance(proj, quat) / np.pi * 180
+
     return json, project_quaternion_to_z_rotation, yank_deg
 
 
@@ -71,7 +73,8 @@ def __(Result):
     def load_exp(path: str) -> Result:
         with open(path) as f:
             return Result.model_validate_json(f.read())
-    return load_exp,
+
+    return (load_exp,)
 
 
 @app.cell
@@ -159,6 +162,7 @@ def __(Mocap, Rotation, Tuple, np, plt):
 
         def dist(self, other: "Event") -> float:
             return np.linalg.norm(self.pos - other.pos)
+
     return Event, NamedTuple, draw_pos, heapify, heappop, mocap_to_44marix
 
 
@@ -335,13 +339,18 @@ def __(
         # Score
         score_ax = ax["score"]
         scores = []
+        successes = []
         for run in res.runs:
+            success = 1
             if None in run.end_pos.quat:
                 continue
             if delayed:
                 box_goal_dist = np.linalg.norm(run.end_pos_delayed.pos - target_pos)
             else:
                 box_goal_dist = np.linalg.norm(run.end_pos.pos - target_pos)
+
+            if box_goal_dist > 0.05:
+                success = 0
 
             box_goal_pos_dist_reward = -3.5 * box_goal_dist * 100
             box_goal_rot_dist_reward = (
@@ -352,11 +361,20 @@ def __(
                 / np.pi
                 * 100
             )
+            if box_goal_rot_dist_reward <= -17.5:
+                success = 0
+
             reward = box_goal_pos_dist_reward + box_goal_rot_dist_reward
             if not np.isnan(reward):
                 scores.append(reward)
-        score_ax.set_title(f"Score µ={np.mean(scores):.2f}")
+            successes.append(success)
+
+        score_tolerance = -67.5
+        score_ax.set_title(
+            f"Score µ={np.mean(scores):.2f} suc={np.mean(successes):.2f}"
+        )
         score_ax.hist(scores)
+        _ = score_ax.axvline(x=score_tolerance, color="green", linestyle="--")
         score_ax.set_xlim(-200, 0)
 
         # Latency
@@ -463,12 +481,12 @@ def __(
                 ys.append(y)
             # swap x/y and mirror x to resemble operator view
             ax_traj.set_ylim(1, 0)
-            ax_traj.set_xlim(-.5, .5)
+            ax_traj.set_xlim(-0.5, 0.5)
             ax_traj.plot(ys, xs, alpha=0.2, color=colors[i // 12])
 
-
         return fig
-    return plotcard,
+
+    return (plotcard,)
 
 
 @app.cell
